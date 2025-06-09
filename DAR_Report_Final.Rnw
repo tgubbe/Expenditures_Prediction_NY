@@ -1,0 +1,447 @@
+
+% To run and create a .tex file: knit('DAR_Report_Final.Rnw') in R
+% Preface required in the knitr RnW file
+\documentclass[11pt]{article}
+
+\usepackage{rotating}
+\usepackage{graphics}
+\usepackage{latexsym}
+\usepackage{color}
+\usepackage{amsmath}
+\usepackage{float}
+\usepackage{wrapfig}
+\usepackage{lipsum}
+\usepackage{booktabs}
+\usepackage[font=scriptsize]{caption}
+\usepackage{listings} % allows for importing code scripts into the tex file
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+
+% Approximately 1 inch borders all around
+\setlength\topmargin{-.56in}
+\setlength\evensidemargin{0in}
+\setlength\oddsidemargin{0in}
+\setlength\textwidth{6.49in}
+\setlength\textheight{8.6in}
+
+% Options for code listing; from Patrick DeJesus, October 2016
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+\lstdefinestyle{mystyle}{
+	backgroundcolor=\color{backcolour},   commentstyle=\color{codegreen},
+	keywordstyle=\color{magenta},
+	numberstyle=\tiny\color{codegray},
+	stringstyle=\color{codepurple},
+	basicstyle=\footnotesize,
+	breakatwhitespace=false,         
+	breaklines=true,                 
+	captionpos=b,                    
+	keepspaces=true,                 
+	numbers=left,                    
+	numbersep=5pt,                  
+	showspaces=false,                
+	showstringspaces=false,
+	showtabs=false,                  
+	tabsize=2
+}
+%"mystyle" code listing set
+\lstset{style=mystyle}
+%\lstset{inputpath=appendix/}
+
+
+\title{Predicting Expenditures for the Municipalities of Monroe and Warwick for the Construction of New Housing Projects} 
+\author{Travis Gubbe}
+\date{\today}
+
+\begin{document} 
+\maketitle
+
+% Code to start knitr
+<<include=FALSE>>=
+  library(knitr)
+opts_chunk$set(
+  concordance=TRUE
+)
+@
+
+<<load data, include=FALSE>>=
+# Load in libraries, load in data and set up variables
+library(MASS)
+library(corrplot)
+library(car)
+library(leaps)
+library(vioplot)
+library(ggplot2)
+@
+
+<<input data, include=FALSE>>=
+# Read in data, remove missing data
+ny<-read.table("~/Masters Program/Stat 794/Labs/EDA lab/cs73.dat",header=T); dim(ny)  #  916  11
+ny2<-na.omit(ny); dim(ny2) # 914  11
+attach(ny2)
+
+## review data set: expen is response
+names(ny2)
+head(ny2, n=5)
+@
+
+<<transformations,include=FALSE>>=
+lexpen<-log(expen)
+lwealth<-log(wealth)
+lpop<-log(pop)
+ldens<-log(dens)
+lincome<-log(income)
+lpint <- log(pint)
+pint2<-pint**2
+pint3<-pint**3
+lpop2<-lpop**2
+lpop3<-lpop**3
+ldens2<-ldens**2
+ldens3<-ldens**3
+i2 = income^2
+i3 = income^3
+lpint2<-lpint**2
+lpint3<-lpint**3
+lincome2 = lincome**2
+lgrowr<-ifelse(growr>0, log(growr+1), -log(-growr+1))
+@
+
+<<EDA plots,include=FALSE>>=
+ggplot(ny2, aes(x=expen, y="")) +
+  geom_boxplot() + # boxplot of expenditure
+  #coord_flip() + # flip to a vertical boxplot
+  xlab("Expenditure") + ylab("") + # axis labels
+  ggtitle("Box Plot of Expenditures")
+hist(expen, breaks = seq(min(expen), max(expen), length.out = 20), xlab = 'Expenditures', ylab = 'Frequency', main = '')
+
+ggplot(ny2, aes(x=expen, y = ..density..)) +
+      geom_histogram(fill = "grey") +
+      geom_density(color = 'blue') +
+      xlab("Expenditures") +
+      ylab(" ") +
+      ggtitle("Density of Expenditures")
+vioplot(expen)
+@
+
+\section*{Executive Summary}
+\par
+\indent The municipalities of Monroe and Warwick in the state of New York are interested in the construction of new housing projects in their communities. Before starting construction, the villages want a projection of potential expenditures per person after housing projects are completed to determine potential funding increases, including the implementation of various taxations such as property or sales taxes. After transforming the variables to assist in meeting linear assumptions, a linear regression model is fitted to predict the potential expenditures for both municipalities for the years 1992, 2005, and 2025. After performing stepwise regression model selection and running model diagnostics on the log transformed variables, it was determined that expenditures per person has a significant relationship with wealth per person, population, percentage intergovernmental (both linear and quadratic terms), density, mean income per person, and growth rate. 
+
+\section*{Introduction}
+\indent The municipalities of Monroe and Warwick are concerned about the potential increase in expenditures per person over time, as they may need to find various ways of meeting the funding requirements for the construction of new housing projects.  Using applicable data from the municipalities of New York, Monroe and Warwick are hoping for an accurate model prediction for years to come. The variables provided for the study are the response variable expenditures per person and the predictor variables wealth per person, population, percent intergovernmental (percentage of revenue from state and federal grants and subsidies), density, mean income per person, and growth rate. There are three identifier variables in the data set, which were not needed for the purposes of the linear regression model.
+\par
+\indent Once a final regression model is chosen, the predictions will be created for Monroe and Warwick. These predictions will assist the two municipalities in forecasting the potential expenditures per person due to new housing projects. A potential challenge in developing a regression model will be the relationships among the variables. It is possible the demographic and income-related variables will exhibit non-linear relationships, particularly with a change in population and income-related characteristics of municipalities. 
+
+\section*{Methodology}
+\par
+\indent The data set provided contains data from 1992 on various municipalities in New York. After removing two observations with empty values, the data set contains 914 observations from 10 variables, with the seven variables listed in the Introduction above being the primary focus. After performing exploratory data analysis, it was determined to use linear regression to create a prediction model. A subset split of the data was created for the prediction model, with the split occurring where high population and high density occurred. From Figure~\ref{log_scatter} the subset used for the study will be from the right of both grey lines, as these mark high population and high density areas. The following assumptions were used as part of the regression analysis: the error terms are independent of others and follow a normal distribution, the observations are independent of one another, and the residuals have constant variance. The statistical analysis was performed in R software version 4.4.2. 
+\begin{figure}[H]
+\begin{center}
+<<scatterplot models, echo=FALSE, fig.width=8, fig.height = 2.5>>=
+par(mfrow = c(1,2))
+#lexpen vs. lpop scatter plot
+plot(lpop, lexpen, xlab = 'Log population', ylab = 'Log expenditures', main = 'Log Expenditures vs. Log Population')
+lines(lowess(lpop,lexpen), col="blue") # using a LOWESS scatter plot smooth
+lines(c(8.3,8.3),c(0,6), col="grey", lwd=3)
+#lexpen vs. ldens scatter plot
+plot(ldens, lexpen, xlab = 'Log of density', ylab = "", main = 'Log Expenditures vs. Log Density')
+lines(lowess(ldens,lexpen), col="blue") # using a LOWESS scatter plot smooth
+lines(c(4.5,4.5),c(0,6), col="grey", lwd=3)
+@
+\caption{Two scatter plots between log expenditure vs. log population and log expenditure vs. log density. Both scatter plots show two linear segments split by a grey line. The prediction model will focus on the data to the right of the grey line in both scatter plots, which highlights high population and high density areas.}
+\label{log_scatter}
+\end{center}
+\end{figure}
+
+\section*{Statistical Analyses}
+\subsection*{Exploratory Data Analysis}
+\indent To begin, exploratory data analysis (EDA) was performed on the data set to better understand the relationship between the response and predictor variables as well as the distribution of each variable and any potential impact on the analysis.  A variety of EDA visualizations were run, including correlation plot, boxplots, and scatter plots between variables. The correlation plot shows that most variables do not have a strong correlation with one another, which is a sign of independence among the variables. There appears to be some correlation between expenditures and wealth as well as population and density, though this is not completely unexpected since it is not uncommon to have larger expenditures in wealthier communities and the high populations may also have high densities. These correlations are something to note when performing model diagnostics, particularly when running a VIF calculation for potential multicollinearity in the data. From the boxplot of expenditures, the data seems to be heavily right-skewed distribution, which will need to be investigated more with a histogram plot and Q-Q plot.
+\par
+\indent To determine if the predictor satisfies normality assumptions, a Q-Q plot and a histogram plot for the expenditures variable were created. From the Q-Q plot in Figure~\ref{qq1}, the data points stray far from the Q-Q normality line, which means expenditure variable is not normally distributed and transformation may need to be completed. From the histogram plot, the data appears to be heavily right-skewed, meaning the expenditures data is not normally distributed. From these two plots, it was determined to perform a logarithmic transformation on the expenditures variable. Once the transformation was complete, a histogram and Q-Q plot were created to check the normality assumption for the newly transformed expenditures variable \textbf{(Appendix A)}. 
+\begin{figure}[H]
+\begin{center}
+<<expenditure models, echo=FALSE, fig.width=8, fig.height = 3>>=
+par(mfrow=c(1,2))
+qqnorm(expen, main = "Q-Q Plot of Expenditures")
+qqline(expen)
+
+hist(expen, main = "Distribution of Expenditures", xlab = 'expenditures')
+@
+\caption{The Q-Q Plot of the expenditure variable on the left helps determine the normality of the explanatory variable. Since the points are generally not close to the Q-Q line (particularly at the tail ends) it can be concluded the expenditure variable is not normally distributed. This is confirmed with the histogram on the right, confirming the expenditure variable is heavily skewed and is not normally distributed.}
+\label{qq1}
+\end{center}
+\end{figure}
+\par
+When recreating the histogram for the log expenditures variable, a normal approximation curve was added to the figure to compare the normality of the log-transformed variable. From Figure~\ref{l_expen}, the log transformation of the expenditures variable appears to be normally distributed in the histogram, with the density smooth curve very similar to the normal approximation curve. The Q-Q plot for the log-transformed expenditures variable shows the data is much closer to the Q-Q line. While it is not perfect, the tails of the graph are not too extreme. After viewing the log-transformation by these two plots, it can be concluded the log expenditure variable satisfies normal distribution \textbf{(Appendix B)}. Next, histograms of each response variable comparing the relationship between log expenditures and each response variable were created to determine the potential distribution of the data. From the histograms, it appeared none of the variables were normally distributed as they were heavily skewed right. It was decided to complete a log transformation of each variable and compare the log transformed histograms with the original histograms created \textbf{(Appendix C)}. From the histograms, the log transformations of the variables appear to be normally distributed. In addition, paired scatter plots of each transformed variable with the log expenditure variable were completed to determine the relationships of the log-transformed variables. 
+\begin{figure}[H]
+\begin{center}
+<<log expenditure histogram, echo=FALSE, fig.width=7, fig.height = 2.55>>=
+hist(lexpen, prob=T, breaks = 20, xlab="Log-Expenditures", ylab="Density", main="Distribution of Log Expenditures")
+# density smooth
+lines(density(lexpen), col="blue")
+rug(lexpen) # data rug
+# normal approximation
+curve(dnorm(x, mean=mean(lexpen), sd=sd(lexpen)), add=TRUE, col="green")
+@
+\caption{The histogram on the Log Expenditures shows the density smooth in blue and the normal approximation curve in green. The density is similar to the normal curve, which means it can be concluded the log expenditures data is more normally distributed.}
+\label{l_expen}
+\end{center}
+\end{figure}
+\par
+When comparing the log transformations of the response variables to log expenditures, it was determined to create a an additional transformation for log income and log percent intergovernmental since they appear to be nonlinear to log expenditures (quadratic transformation for log income and cubic transformation for log percent intergovernmental), while log wealth and log growth rate appear to have linear relationships with our explanatory variable and do not need further transformation \textbf{(Appendix D)}. Several new variables are created for the regression model ($log pint^2$, $log pint^3$, and $log income^2$) to later determine if further transformation of these variables help the prediction model. 
+\par
+<<Model selection,include=FALSE>>=
+set2<-(lpop>8.3 & ldens>4.5)
+ny2vars = data.frame(lexpen,lwealth,lpop,lpint,ldens,lincome,lgrowr)
+
+fit2c = lm(lexpen~lwealth+lpop+lpint+lpint2+ldens+lincome+lgrowr, data = ny2vars, subset=set2)
+summary(fit2c)
+stepAIC(fit2c, direction="both") #get same final model as fit2c
+@
+\subsection*{Regression Modeling}
+\indent Now that the variables have been established, the next step in the modeling process is to create an appropriate regression model. Multiple regression models were created and evaluated to determine the best model based on AIC criteria, while also checking BIC and $C_p$ Mallow’s regression fit to help determine how many variables to include in the final model. First, a full regression model was run on log expenditures to determine the impact of each individual response variable, including choosing a model based on AIC by stepwise regression. Once run, the AIC report is generated to determine where to minimize the AIC in the model. The stepwise regression both adds and removes the response variables to the regression model, determining the impact of the variables when fit into the model. The final result is the regression model that best minimizes the AIC.  
+\par
+\indent Multiple model attempts were performed by slowly removing non-impactful response variables from the model and performing AIC calculations. The linear regression model chosen removed $log income^2$ and $log pint^3$, resulting in the selection of the following seven response variables: log wealth, log population, log pint, log pint2, log density, log income, and log growth rate. In addition to the AIC model, a best subsets search was performed, using BIC and $C_p$ Mallow’s regression fit to determine the ideal number of variables. To determine the ideal number of variables, the best subsets search determines the BIC and $C_p$ values for each amount of variables in the model, with the lowest possible values determined to be the best model fit. From the BIC and $C_p$ model, the ideal number of variables was 7 variables for $C_p$ Mallow’s and 5 variables for BIC, which is in line with what was found using the AIC model. 
+
+\begin{wraptable}{r}{4 cm}
+\caption{VIF scores of the response variables.}
+\label{VIF}
+% Label must come after caption to get numbering right
+\begin{tabular}{|r|l|} \hline
+Variable & VIF Score \\ \hline
+lwealth & 2.05 \\ \hline
+lpopulation & 6.40 \\ \hline
+lpint & 1.32 \\ \hline
+ldens & 7.81 \\ \hline
+lincome & 2.94 \\ \hline
+lgrowr & 1.03 \\ \hline
+\end{tabular}
+\end{wraptable}
+Next, there needs to be a check if the correlation of the independent variables may have a potential impact on the regression model via multicollinearity, as noted after creating the correlation plots at the beginning of the EDA cycle. Now that there is a potential linear regression model, a VIF plot is completed to determine if there is multicollinearity among the response variables. A VIF value above 7 would raise concern, while a value above 10 indicates multicollinearity.
+
+From Table 1, most of the variables have a low VIF score, indicating low multicollinearity between the response variables and not a concern for our model. The variable of concern is log density with a VIF score of 7.81, which hints that multicollinearity may exist and become a factor in the model. As a test, I removed the log density variable from the model to see if the model improved, which was not the case as the AIC was not minimized. Thus, I chose not to remove log density from the model since the VIF score was not above 10 and the regression model did not improve. As such, the regression model is the following:
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{l|rrrrr|}
+\hline
+Variable & Coefficients & Standard Error & P-Value & 95\% CI \\ 
+  \hline
+Intercept & -0.88 & 0.80 & 0.27 & ( -2.47 , 0.70 ) \\ 
+  LWealth & 0.40 & 0.05 & 0.01 & ( 0.30 , 0.51 ) \\ 
+  LPopulation & 0.16 & 0.04 & 0.01 & ( 0.08 , 0.24 ) \\ 
+  LPint & -1.26 & 0.32 & 0.01 & ( -1.88 , -0.63 ) \\ 
+  $LPint^2$ & 0.19 & 0.06 & 0.01 & ( 0.06 , 0.31 ) \\ 
+  LDensity & -0.09 & 0.04 & 0.03 & ( -0.17 , -0.01 ) \\ 
+  LIncome & 0.30 & 0.11 & 0.01 & ( 0.09 , 0.52 ) \\ 
+  LGrowr & -0.03 & 0.01 & 0.03 & ( -0.05 , -0.01 ) \\ 
+  \hline
+\end{tabular}
+\par\vspace{0.5cm}  % Adjust spacing if needed
+\(Adjusted R^2 = 0.63 \), \quad AIC = -533.54
+\caption{Table of the regression model displaying the Coefficient values, standard error, p-values, and 95\% confidence intervals of each response variable. All coefficients are statistically significant based on p-value and confidence intervals.} 
+\label{reginf}
+\end{table}
+
+\par
+As seen from Table~\ref{reginf}, each response variable is statistically significant with a p-value less than 0.05. In addition, the coefficients describe the relationship between the response variable and log expenditures. For example, as log wealth increases by one unit, this means log expenditures will increase by 0.40 units. Another example is as log density increases by one unit, log expenditures decreases by 0.09 units. From the 95\% confidence intervals, each variable does not contain zero, which means the variable is statistically significant in the regression model. Also, the adjusted $R^2$ of 0.63 means 63\% of the variance in the regression model can be explained. 
+
+\subsection*{Model Diagnostics}
+\par
+Now that a regression model has been developed, the next step is to perform model diagnostics to determine if the model meets normality assumptions, as well as determine if there are any outliers or influential points of concern.  The first diagnostic reports run is a studentized residuals plot and a Q-Q plot for the studentized residuals. The studentized residuals compare the observed and predicted values in a regression model, which helps identify potential outliers and influential points in the model. As stated earlier, the Q-Q plot helps determine the normality of the data as well as identify potential outliers and influential points. 
+\begin{figure}[H]
+\begin{center}
+<<diagnostics plots, echo=FALSE, results='hide', fig.keep="all", fig.width=9, fig.height = 4.25>>=
+par(mfrow=c(1,2))
+#Residual plot of the studentized residuals vs. predicted values
+plot(predict(fit2c), rstudent(fit2c), ylab="Studentized Residuals", xlab="Predicted", main = 'Residual Plot')
+abline(h = 0, col = "blue", lty = 2)
+#Q-Q plot of studentized residuals
+qqPlot(fit2c, main="QQ Plot", ylab="Studentized Residuals", id = list(method = "y", print = FALSE))
+@
+\caption{A studentized residual plot and Q-Q plot to identify and determine the potential effect of outliers and influential points in the regression model. It appears observation 887 has a very large influence on the model and may be an outlier.}
+\label{diagnostics1}
+\end{center}
+\end{figure}
+\par
+From the studentized residuals and Q-Q plot, the data appears to be normally distributed but contains a potential influential point in observation 887. In addition to the above plots, a Cook’s distance plot is created to investigate potential influential points \textbf{(Appendix E)}. At this point, an argument can be made to remove observation 887 from the data and rerun the regression model. However, since it is a real data point, is not an empty value, and does not appear to be a typo or egregious error when viewing its values, I chose to leave the observation in the regression model and continue forward with the prediction process.
+\par
+\subsection*{Prediction for Monroe and Warwick}
+\par
+Now that a regression model has been developed and model diagnostics have been run, the predictions for expenditures in 1992, 2002, and 2025 can be entered for Monroe and Warwick municipalities. First, the standard deviation was fit on the residuals of the regression model, which will help in the construction of the confidence interval. Next, a data frame was created for each prediction year for each municipality, making it easier to enter the individual prediction values. For each data frame, the prediction values given by the municipalities are entered into the respective variables. Below are the log expenditure predictions for Monroe and Warwick municipalities for the given years:
+\begin{table}[H]
+\centering
+\begin{tabular}{|rrrr|}
+  \hline
+Municipality & Year & Prediction(\$) & 95\% CI \\ 
+  \hline
+Monroe & 1992 & 237 & (129 , 437) \\ 
+   & 2005 & 244 & (133 , 450) \\ 
+   & 2025 & 242 & (131 , 445) \\ 
+  Warwick & 1992 & 265 & (143 , 489) \\ 
+   & 2005 & 287 & (155 , 531) \\ 
+   & 2025 & 302 & (163 , 560) \\ 
+   \hline
+\end{tabular}
+\caption{Predictions of Log Expenditures for Monroe and Warwick for years 1992, 2005, and 2025, as well as a 95\% confidence interval for each prediction.} 
+\label{pred_table}
+\end{table}
+\par
+From the predictions, Warwick appears to have higher expenditure predictions than Monroe for all three years, though Monroe has a tighter 95\% confidence interval in its prediction compared to Warwick. As such, the model expects Warwick municipality to have higher expenditures and an increase in expenditures over time, but the model appears to have a more precise estimate for the Monroe municipality. With higher predicted expenditures over time, Warwick may need to explore potential funding increases to offset costs. For Monroe, their predictions don’t increase dramatically over time, which means they most likely do not need to explore funding increases at this time. 
+\section*{Conclusion}
+\indent Based on the needs of Monroe and Warwick and exploratory data analysis conducted on the given data, a linear regression model was developed to predict the expenditures for the years 1992, 2005, and 2025. This model determined the log transformations of wealth per person, population, percent intergovernmental (both linear and quadratic terms), density, mean income per person, and growth rate were statistically significant in the prediction of log expenditures per person. Once the log forms are extrapolated, the model believes Warwick municipality will have higher expenditures and an increase over time but is more likely to be precise in predicting the expenditures for Monroe based on the smaller confidence interval. From these results, Warwick may want to explore future funding and offset these costs, while Monroe may not need to explore additional funding since the expenditures remain relatively the same over a long period of time.  
+\par
+\indent While this was the prediction model chosen for this report, different interpretations and analyses can improve the prediction model. For example, the predictor variables can undergo a multitude of transformations based on the author’s interpretation. Instead of splitting the data for population and density and creating a prediction model based on the subset, the full data set can be used and a nonlinear regression model or additional transformation on the variables can be performed. These decisions can change and potentially help improve the prediction model. In addition, choosing to remove observations can lead to a different model. It was determined not to remove observation 887 in this report, but an argument can be made to do so, which may influence a change in the coefficients of the regression model and different predictions for the municipalities. One of the challenges of this study is the lack of variables provided. Adding additional demographic and income-related variables may help improve prediction models for future studies, particularly for events decades in the future. Overall, the regression model presented is, at the very least, a good starting point for the municipalities. The regression model can then be adjusted accordingly depending on any additional factors the municipalities want to consider before adjusting their respective budgets. 
+
+\newpage
+\section*{Design Statement}
+\par
+\indent During the preparation of the lab the author used ChatGPT for code debugging and assistance in the creation and placement of the figures and tables in LaTeX. ChatGPT presented additional packages for LaTeX studio to help with the formation of tables and print out the PDF file. After using this service, the author reviewed and edited the content as needed and takes responsibility for the content of this lab.
+\par
+\section*{Appendix}
+
+\textbf{Appendix A}
+\par
+\begin{figure}[H]
+\begin{center}
+<<EDA correlation, echo=FALSE, fig.width=9, fig.height = 4>>=
+#Correlation plot
+ny2vars = data.frame(expen, wealth, pop, pint, dens, income, growr)
+cny2 = cor(ny2vars)
+corrplot(cny2, method = 'number')
+#Boxplot of expenditures
+@
+\caption{Correlation plot of expenditures, wealth, population, percent intergovernmental, density, income, and growth rate using numerical values. Most variables do not seem to be correlated with one another and thus are independent of one another. Note correlation values of expenditures with wealth and population with density may impact the model.}
+\label{corr}
+\end{center}
+\end{figure}
+\par
+
+\begin{figure}[h]
+\begin{center}
+<<EDA boxplot, echo=FALSE, fig.width=5, fig.height = 2.5>>=
+ggplot(ny2, aes(x=expen, y="")) +
+  geom_boxplot() + # boxplot of expenditure
+  #coord_flip() + # flip to a vertical boxplot
+  xlab("Expenditure") + ylab("") + # axis labels
+  ggtitle("Box Plot of Expenditures")
+
+@
+\caption{Boxplot of the expenditures shows a heavy right-skew in the data. Further analysis will determine the expenditures variable is not normally distributed and thus needs a transformation.}
+\label{boxplot_expen}
+\end{center}
+\end{figure}
+\par
+
+\newpage
+\textbf{Appendix B}
+\begin{figure}[H]
+\begin{center}
+<<Q-Q plot log-expen, echo=FALSE, fig.width=8, fig.height=4>>=
+#Q-Q plot of log-expenditures
+qqnorm(lexpen, main = "Q-Q Plot of Log Expenditures")
+qqline(lexpen)
+@
+\caption{The Q-Q Plot on the right of Log Expenditures follows the Q-Q line much better, appearing to be more normally distributed.}
+\end{center}
+\end{figure}
+
+\newpage
+\textbf{Appendix C}
+\begin{figure}[H]
+\begin{center}
+<<EDA hist_comparisons, echo=FALSE, fig.width=9, fig.height = 5>>=
+par(mfrow=c(2,6), oma = c(0,0,2,0))
+# First histogram of non-transformed variables
+hist(expen, main = " ", xlab = 'expenditures', xaxt = 'n')
+hist(wealth, main = " ", xlab = 'wealth', ylab = "", xaxt = 'n') 
+hist(pop, main = " ", xlab = 'population', ylab = "", xaxt = 'n')
+hist(pint, main = " ", xlab = 'pint', ylab = "", xaxt = 'n')
+hist(dens, main = " ", xlab = 'density', ylab = "", xaxt = 'n')
+hist(income, main = " ", xlab = 'income', ylab = "", xaxt = 'n')
+# Then histogram of log-transformed variables (except Growth Rate)
+hist(lexpen, main = " ", xlab = 'expenditures') 
+hist(lwealth, main = " ", xlab = 'wealth', ylab = "", xaxt = 'n')  
+hist(lpop, main = " ", xlab = 'population', ylab = "", xaxt = 'n')
+hist(log(pint), main = " ", xlab = 'pint', ylab = "", xaxt = 'n')
+hist(ldens, main = " ", xlab = 'density', ylab = "", xaxt = 'n')
+hist(lincome, main = " ", xlab = 'income', ylab = "", xaxt = 'n')
+#Title to separate non-transformed graphs from log-transformed graphs
+mtext('Distributions of non-transformed variables', side = 3, line = 0, outer = TRUE)
+mtext('Distributions of log-transformed variables', side = 3, line = -19, outer = TRUE)
+
+@
+\caption{The histograms of non-transformed variables show each variable is not normally distributed. Creating a log transformation of each variable causes each one to follow a normal distribution.}
+\label{hist_compare}
+\end{center}
+\end{figure}
+\par
+\newpage
+\textbf{Appendix D}
+\begin{figure}[H]
+\begin{center}
+<<Scatterplots, echo=FALSE, fig.width = 9, fig.height = 5>>=
+par(mfrow = c(2,2), oma = c(0,0,2,0))
+#lexpen vs. pint scatter plot
+plot(pint, lexpen, xlab = 'Log Percent intergovernmental', ylab = 'Log expenditures', main = 'Percent intergovernmental vs. log expenditures')
+lines(lowess(pint,lexpen), col="blue") # using a LOWESS scatter plot smooth
+#lexpen vs. income scatter plot
+plot(income, lexpen, xlab = 'Income', ylab = 'Log expenditures', main = 'Income vs. log expenditures')
+lines(lowess(income,lexpen), col="blue") # using a LOWESS scatter plot smooth
+#lexpen vs. growth rate scatter plot
+plot(growr, lexpen, xlab = 'Log growth rate', ylab = 'Log expenditures', main = 'Growth rate vs. log expenditures')
+lines(lowess(growr, lexpen), col="blue") # using a LOWESS scatter plot smooth
+#lexpen vs. density scatter plot
+plot(wealth, lexpen, xlab = 'Wealth', ylab = 'Log expenditures', main = 'Wealth vs. log expenditures')
+lines(lowess(wealth, lexpen), col="blue") # using a LOWESS scatter plot smooth
+mtext('Log-expenditures vs. non-transformed predictor variables', side = 3, line = 0, outer = TRUE)
+
+@
+\caption{Scatter plots of log-expenditures vs. the remaining predictor variables.From the scatter plots, it is difficult to determine the relationship between the predictors and log expenditures. It is beneficial to log-transform the predictor variables to best see the relationships.}
+\label{scatterplots}
+\end{center}
+\end{figure}
+
+\begin{figure}[H]
+\begin{center}
+<<Log Scatterplots, echo=FALSE, fig.width = 9, fig.height = 5>>=
+par(mfrow = c(2,2), oma = c(0,0,2,0))
+#lexpen vs. lpint scatter plot
+plot(pint, lexpen, xlab = 'Log Percent intergovernmental', ylab = 'Log expenditures', main = 'Log Percent intergovernmental vs. log expenditures')
+lines(lowess(lpint,lexpen), col="blue") # using a LOWESS scatter plot smooth
+#lexpen vs. lincome scatter plot
+plot(lincome, lexpen, xlab = 'Income', ylab = 'Log expenditures', main = 'Log Income vs. log expenditures')
+lines(lowess(lincome,lexpen), col="blue") # using a LOWESS scatter plot smooth
+#lexpen vs. lgrowr scatter plot
+plot(lgrowr, lexpen, xlab = 'Log growth rate', ylab = 'Log expenditures', main = 'Log growth rate vs. log expenditures')
+lines(lowess(lgrowr, lexpen), col="blue") # using a LOWESS scatter plot smooth
+#lexpen vs. lgrowr scatter plot
+plot(lwealth, lexpen, xlab = 'Log wealth', ylab = 'Log expenditures', main = 'Log wealth vs. log expenditures')
+lines(lowess(lwealth, lexpen), col="blue") # using a LOWESS scatter plot smooth
+mtext('Log-expenditures vs. log predictor variables', side = 3, line = 0, outer = TRUE)
+
+@
+\caption{Scatter plots of log-expenditures vs. the remaining log-transformed predictor variables. Log-wealth and Log-growth rate appear linear, while log-percent intergovernmental appears non-linear and would need further transformation.}
+\label{scatterplots}
+\end{center}
+\end{figure}
+\par
+\newpage
+\textbf{Appendix E}
+\begin{figure}[H]
+\begin{center}
+<<cooks plot, echo=FALSE, fig.width=6, fig.height = 4>>=
+cutoff <- 4/((nrow(ny2)-length(fit2c$coefficients)-2))
+#Cook's distance influence Plot
+plot(fit2c, which=4, cook.levels=cutoff)
+@
+\caption{Cook's Distance plot displaying the influence of observation 887.}
+\label{cooks}
+\end{center}
+\end{figure}
+\newpage
+\section*{R Code}
+\lstinputlisting[language=R, caption = R Source Code]{DAR_Analysis_Code.R}
+\end{document}
